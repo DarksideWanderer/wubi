@@ -22,6 +22,11 @@ xcuserdata/
 *.xcscmblueprint
 
 # IDE state and local configuration.
+/.signing/
+*.p12
+*.pfx
+*.keychain
+*.keychain-db
 .vs/
 .idea/
 *.user

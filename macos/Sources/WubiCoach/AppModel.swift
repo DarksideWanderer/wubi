@@ -17,11 +17,17 @@ final class AppModel: ObservableObject {
     @Published var pinned = true { didSet { onPinChanged?(pinned) } }
     @Published var codeEnabled = true { didSet { updateCandidates() } }
     @Published private(set) var paused = false
-    @Published private(set) var manual = false
     @Published private(set) var permissions = ""
+    @Published private(set) var shortcutStatus = "正在注册全局快捷键"
+    @Published private(set) var shortcutsReady = false
+    @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
+    @Published private(set) var inputMonitoringGranted = CGPreflightListenEventAccess()
+    @Published private(set) var permissionActionMessage = ""
+    @Published private(set) var needsEditorAccessibility = false
     var onPinChanged: ((Bool) -> Void)?
     var onManual: (() -> Void)?
     var onHelp: (() -> Void)?
+    var onPermissions: (() -> Void)?
 
     private let monitor = KeyMonitor()
     private let reader = ContextReader()
@@ -29,6 +35,7 @@ final class AppModel: ObservableObject {
     private var timer: Timer?
     private var busy = false
     private var generation = 0
+    private var refreshAfterPreview = false
     private var pending = PendingCode()
     private var keyQueue: [CodeKey] = []
     private var allowedPID: pid_t = 0
@@ -50,7 +57,7 @@ final class AppModel: ObservableObject {
 
     func start() {
         monitor.onKey = { [weak self] key, pid in
-            guard let self = self, !self.paused, !self.manual,
+            guard let self = self, !self.paused,
                   pid == self.allowedPID, Date().timeIntervalSince(self.lastSample) < 1 else { return }
             if self.keyQueue.count >= 32 { self.keyQueue.removeAll(); self.pending.clear() }
             self.keyQueue.append(key)
@@ -68,43 +75,73 @@ final class AppModel: ObservableObject {
     func stop() { timer?.invalidate(); timer = nil; monitor.stop(); clearCapture() }
 
     func togglePause() {
-        if manual { manual = false; paused = false } else { paused.toggle() }
+        paused.toggle()
         generation += 1; clearCapture(); context = ""; prefix = ""
         status = paused ? "已暂停 · 上下文和编码已清除" : "等待其他应用的输入框"
         updateCandidates()
     }
 
     func beginManual() {
-        manual = true; generation += 1; clearCapture()
-        status = "手动上下文 · 点击继续恢复跨应用读取"
+        generation += 1; clearCapture()
     }
 
     @discardableResult func applyManual(context: String, prefix: String, lookup: Bool) -> Bool {
-        manual = true; paused = false; generation += 1; clearCapture()
+        if lookup && engine.lookup(character: context.trimmingCharacters(in: .whitespacesAndNewlines)) == nil {
+            status = "请输入一个已收录的汉字"; return false
+        }
+        generation += 1; clearCapture(); refreshAfterPreview = true
         self.context = String(context.suffix(80)); self.prefix = PendingCode.normalize(prefix)
         if lookup {
-            guard let info = engine.characters[context.trimmingCharacters(in: .whitespacesAndNewlines)] else {
+            guard let info = engine.lookup(character: context.trimmingCharacters(in: .whitespacesAndNewlines)) else {
                 status = "请输入一个已收录的汉字"; return false
             }
             self.prefix = ""; candidates = [WubiCandidate(info: info, reason: "单字查询")]; selected = candidates.first
         } else { updateCandidates() }
-        status = "手动上下文 · 点击继续恢复跨应用读取"
+        status = paused ? "手动查询 · 自动读取已暂停" : "手动查询 · 返回其他应用后自动继续读取"
         return true
     }
 
     func requestPermissions() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-        _ = CGRequestListenEventAccess()
-        monitor.start(); poll()
+        refreshPermissions()
+        onPermissions?()
+    }
+
+    func refreshPermissions() { poll() }
+
+    func openEditorAccessibilitySettings() {
+        _ = NSWorkspace.shared.open(URL(string: "vscode://settings/editor.accessibilitySupport")!)
+    }
+
+    func openPermissionSettings(_ section: PermissionSection) {
+        if section == .accessibility, !AXIsProcessTrusted() {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
+        } else if section == .inputMonitoring, !CGPreflightListenEventAccess() {
+            _ = CGRequestListenEventAccess()
+        }
+        // Open the pane even when macOS no longer repeats its permission prompt.
+        let workspace = NSWorkspace.shared
+        if workspace.open(section.settingsURL) || workspace.open(section.legacySettingsURL) {
+            permissionActionMessage = "已打开\(section.title)设置，请在列表中开启五笔伴学。"
+        } else if workspace.open(URL(fileURLWithPath: "/System/Applications/System Settings.app")) {
+            permissionActionMessage = "请在系统设置 → 隐私与安全性 → \(section.title)中开启五笔伴学。"
+        } else {
+            permissionActionMessage = "无法自动打开系统设置，请手动进入隐私与安全性 → \(section.title)。"
+        }
+        refreshPermissions()
     }
 
     private func poll() {
         let accessibility = AXIsProcessTrusted()
+        accessibilityGranted = accessibility
+        inputMonitoringGranted = CGPreflightListenEventAccess()
         monitor.start()
-        permissions = !accessibility ? "需要辅助功能权限：读取其他应用的光标上下文" :
-            (!monitor.installed ? "需要输入监控权限：监听五笔字母；授权后可重启应用" : "")
-        guard !paused, !manual else { return }
+        shortcutStatus = monitor.shortcutStatus
+        shortcutsReady = monitor.shortcutsReady
+        let missing = [accessibility ? nil : "辅助功能", inputMonitoringGranted ? nil : "输入监控"].compactMap { $0 }
+        permissions = !missing.isEmpty ? "未授权：" + missing.joined(separator: "、") + " · 点击「权限」设置" :
+            (!monitor.installed ? "输入监听未启动 · 请重启应用" : "")
+        guard !paused else { return }
         guard accessibility else { unavailable(permissions); return }
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
@@ -120,7 +157,7 @@ final class AppModel: ObservableObject {
             let snapshot = self.reader.read(processID: pid)
             DispatchQueue.main.async {
                 self.busy = false
-                guard self.generation == revision, !self.paused, !self.manual,
+                guard self.generation == revision, !self.paused,
                       NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
                 self.apply(snapshot, source: source)
             }
@@ -128,19 +165,25 @@ final class AppModel: ObservableObject {
     }
 
     private func apply(_ snapshot: ContextSnapshot, source: String) {
-        guard snapshot.available else { unavailable(source + " · " + snapshot.status); return }
+        guard snapshot.available else {
+            unavailable(source + " · " + snapshot.status, needsEditorAccessibility: snapshot.needsEditorAccessibility)
+            return
+        }
+        needsEditorAccessibility = false
         if focusID != snapshot.focusID { clearCapture() }
         focusID = snapshot.focusID; allowedPID = snapshot.processID; lastSample = Date()
         for key in keyQueue { pending.consume(key) }; keyQueue.removeAll()
         let text = pending.reconcile(context: snapshot.text)
         let nextPrefix = pending.code
         status = source + " · " + snapshot.status + (nextPrefix.isEmpty ? "" : " · 按键推测")
-        if context != text || prefix != nextPrefix {
+        if refreshAfterPreview || context != text || prefix != nextPrefix {
+            refreshAfterPreview = false
             context = text; prefix = nextPrefix; updateCandidates()
         }
     }
 
-    private func unavailable(_ message: String) {
+    private func unavailable(_ message: String, needsEditorAccessibility: Bool = false) {
+        self.needsEditorAccessibility = needsEditorAccessibility
         clearCapture(); status = message
         if !context.isEmpty || !prefix.isEmpty { context = ""; prefix = ""; updateCandidates() }
     }

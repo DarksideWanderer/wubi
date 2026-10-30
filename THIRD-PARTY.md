@@ -15,3 +15,7 @@
 `data/wubi86.dict.yaml` 原样来自 [rime/rime-wubi](https://github.com/rime/rime-wubi)，LGPL-3.0，见 `data/RIME-LICENSE.txt` 和 `data/RIME-AUTHORS.txt`。词库头部保留原作者与修订说明。获取于 2026-10-29。词库作为独立数据文件加载，可以替换。
 
 `data/corpus.txt` 是本项目自编补充语料。程序没有使用微软输入法提取词库。
+
+## 单字拼音库
+
+`data/pinyin.tsv` 来自 [mozillazg/pinyin-data](https://github.com/mozillazg/pinyin-data/tree/9d05c9e29cb6a7e5c79f2f5279f5c1014246a19a) 的 `pinyin.txt`（0.15.0，固定提交 `9d05c9e29cb6a7e5c79f2f5279f5c1014246a19a`），获取于 2026-10-30，采用 MIT 许可；完整许可见 `data/PINYIN-LICENSE.txt`。`tools/build_pinyin.py` 将逐字的全部读音去除声调、把 ü 转成 v 并去重，未引入词组。原文件 SHA-256、版本与条目数记录于 `data/PINYIN-SOURCE.json`。

@@ -50,7 +50,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
-          Compress-Archive -LiteralPath dist,src,data,tests,macos,.github,.gitignore,.gitattributes,build.ps1,README.md,THIRD-PARTY.md,LICENSE -DestinationPath artifacts/WubiCoach-Windows.zip
+          Compress-Archive -LiteralPath dist,src,data,tests,tools,macos,.github,.gitignore,.gitattributes,build.ps1,README.md,THIRD-PARTY.md,LICENSE -DestinationPath artifacts/WubiCoach-Windows.zip
       - uses: actions/upload-artifact@v7
         with:
           name: WubiCoach-Windows

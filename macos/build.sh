@@ -37,11 +37,11 @@ else
 fi
 chmod +x "$APP/Contents/MacOS/WubiCoach"
 cp "$PACKAGE/Resources/Info.plist" "$APP/Contents/Info.plist"
+bash "$PACKAGE/build-icon.sh" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT"/data/* "$APP/Contents/Resources/data/"
 cp "$ROOT/README.md" "$ROOT/THIRD-PARTY.md" "$ROOT/LICENSE" "$APP/Contents/Resources/"
-# Local ad-hoc signing. This is not Developer ID signing or Apple notarization.
-codesign --force --sign - --identifier org.wubicoach.desktop "$APP"
-codesign --verify --strict "$APP"
+# Reuse a stable local certificate so TCC can recognize subsequent builds.
+bash "$PACKAGE/sign.sh" "$APP"
 ditto -c -k --keepParent "$APP" "$OUTPUT/WubiCoach-macOS-$SUFFIX.zip"
 echo "Built: $APP"
 echo "Archive: $OUTPUT/WubiCoach-macOS-$SUFFIX.zip"

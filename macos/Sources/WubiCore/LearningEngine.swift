@@ -34,6 +34,8 @@ public struct WubiCandidate: Identifiable, Equatable {
 /// Uses the same TSV/YAML files and scoring rules as the Windows implementation.
 public final class LearningEngine {
     public private(set) var characters: [String: WubiCharacter] = [:]
+    private var pinyinIndex: PinyinIndex?
+    public var pinyin: PinyinIndex { pinyinIndex! }
     public private(set) var phraseCount = 0
     public private(set) var keyboardRoots: [String: String] = [:]
     private var transitions: [String: [String: Double]] = [:]
@@ -55,14 +57,24 @@ public final class LearningEngine {
             )
         }
         var seen = Set<String>()
+        let knownScalars = Set(characters.values.map { $0.character.unicodeScalars.first!.value })
+        var pinyinFrequencies: [UInt32: Double] = [:]
+        var pinyinSeen = Set<UInt32>()
         for line in try Self.lines(dataDirectory.appendingPathComponent("wubi86.dict.yaml")) {
             if line.hasPrefix("#") { continue }
             let p = line.components(separatedBy: "\t")
-            guard p.count >= 2, Self.validCode(p[1]), seen.insert(p[0]).inserted else { continue }
-            let word = p[0]
-            guard word.allSatisfy({ characters[String($0)] != nil }) else { continue }
+            guard p.count >= 2, Self.validCode(p[1]) else { continue }
             let value = p.count > 2 ? Double(p[2].replacingOccurrences(of: "%", with: "")) ?? 0 : 0
             let weight = 1 + sqrt(max(0, value)) / 100
+            // Pinyin parity uses exact code points, as Windows does. String's
+            // canonical equivalence otherwise merges e.g. 礼 and 礼 before ranking.
+            if p[0].unicodeScalars.count == 1, let scalar = p[0].unicodeScalars.first?.value,
+               knownScalars.contains(scalar), pinyinSeen.insert(scalar).inserted {
+                pinyinFrequencies[scalar, default: 0] += weight
+            }
+            guard seen.insert(p[0]).inserted else { continue }
+            let word = p[0]
+            guard word.allSatisfy({ characters[String($0)] != nil }) else { continue }
             if word.count == 1 { frequencies[word, default: 0] += weight }
             else { train(word, weight: weight); phraseCount += 1 }
         }
@@ -72,7 +84,12 @@ public final class LearningEngine {
             if let range = Range(match.range, in: corpus) { train(String(corpus[range]), weight: 12) }
         }
         let common = "的了是在我有和你不这人们中大为上个国到说时要就出会可也对生能而子那得于着下自之年过发后作里用道行所然家种事成多天好学谢见气欢想今明去吃饭工作生活"
-        for (index, ch) in common.enumerated() { frequencies[String(ch), default: 0] += Double(100 - index) }
+        for (index, ch) in common.enumerated() {
+            frequencies[String(ch), default: 0] += Double(100 - index)
+            pinyinFrequencies[ch.unicodeScalars.first!.value, default: 0] += Double(100 - index)
+        }
+        pinyinIndex = try PinyinIndex(url: dataDirectory.appendingPathComponent("pinyin.tsv"),
+                                 frequencies: pinyinFrequencies, knownCharacters: knownScalars)
         for line in try Self.lines(dataDirectory.appendingPathComponent("keyboard.tsv")) {
             let p = line.components(separatedBy: "\t")
             guard p.count >= 4, let key = p[0].first, ("A"..."Y").contains(String(key)) else { continue }
@@ -87,6 +104,12 @@ public final class LearningEngine {
     private static func lines(_ url: URL) throws -> [String] {
         try String(contentsOf: url, encoding: .utf8)
             .replacingOccurrences(of: "\r", with: "").components(separatedBy: "\n")
+    }
+
+    public func lookup(character: String) -> WubiCharacter? {
+        guard let info = characters[character],
+              info.character.unicodeScalars.elementsEqual(character.unicodeScalars) else { return nil }
+        return info
     }
 
     private static func validCode(_ code: String) -> Bool {
@@ -134,7 +157,7 @@ public final class LearningEngine {
             return prefix.isEmpty || info.code.hasPrefix(prefix) || info.shortCode.split(separator: " ").contains { $0.hasPrefix(prefix) }
         }.sorted { a, b in
             a.value == b.value ? a.key < b.key : a.value > b.value
-        }.prefix(5).compactMap { character, _ in
+        }.prefix(18).compactMap { character, _ in
             guard let info = characters[character] else { return nil }
             return WubiCandidate(info: info, reason: (reasons[character] ?? "常用字补足") + (prefix.isEmpty ? "" : " · \(prefix)"))
         }

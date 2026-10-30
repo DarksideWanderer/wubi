@@ -15,6 +15,7 @@ namespace WubiCoach {
         readonly int ignoredPid;
         IntPtr hook;
         bool keyboardVisible;
+        readonly HoldKeyboardShortcut holdShortcut=new HoldKeyboardShortcut();
         public event Action<bool> KeyboardVisibilityChanged;
         IntPtr previousWindow,previousFocus;
         string code="",previousText="",previousControl="";
@@ -31,11 +32,15 @@ namespace WubiCoach {
             int kind=message.ToInt32();
             if(n>=0 && (kind==0x100||kind==0x104||kind==0x101||kind==0x105)) {
                 var key=(KeyData)Marshal.PtrToStructure(data,typeof(KeyData));
-                if(key.Key==0x77) {
-                    bool visible=kind==0x100||kind==0x104;
-                    if(keyboardVisible!=visible) {keyboardVisible=visible;if(KeyboardVisibilityChanged!=null)KeyboardVisibilityChanged(visible);}
-                    return new IntPtr(1); // F8 belongs to the companion; do not forward it to the editor.
-                }
+                bool down=kind==0x100||kind==0x104;
+                bool modifier=key.Key==0x10||key.Key==0x11||key.Key==0x12||(key.Key>=0xA0&&key.Key<=0xA5)||key.Key==0x5B||key.Key==0x5C;
+                bool required=Down(0x11)&&Down(0x12)&&!Down(0x10)&&!Down(0x5B)&&!Down(0x5C);
+                bool consumed=holdShortcut.Handle((int)key.Key,down,required);
+                if(modifier)holdShortcut.ModifiersChanged(required&&down);
+                if(keyboardVisible!=holdShortcut.Visible) {keyboardVisible=holdShortcut.Visible;if(KeyboardVisibilityChanged!=null)KeyboardVisibilityChanged(keyboardVisible);}
+                if(consumed)return new IntPtr(1);
+                // Modifier events must not erase the pending code when peeking at roots.
+                if(modifier)return CallNextHookEx(hook,n,message,data);
                 if(!enabled || (kind!=0x100 && kind!=0x104))return CallNextHookEx(hook,n,message,data);
                 IntPtr window=Native.GetForegroundWindow();uint pid;
                 uint thread=Native.GetWindowThreadProcessId(window,out pid);

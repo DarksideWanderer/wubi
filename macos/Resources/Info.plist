@@ -6,6 +6,7 @@
     <key>CFBundleDisplayName</key><string>五笔伴学</string>
     <key>CFBundleIdentifier</key><string>org.wubicoach.desktop</string>
     <key>CFBundleExecutable</key><string>WubiCoach</string>
+    <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.2.0</string>
     <key>CFBundleVersion</key><string>2</string>
@@ -13,6 +14,6 @@
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSAccessibilityUsageDescription</key><string>读取其他应用光标前的文字，用于五笔学习提示。</string>
-    <key>NSInputMonitoringUsageDescription</key><string>识别待输入的五笔字母，并在按住 F8 时显示字根键盘。</string>
+    <key>NSInputMonitoringUsageDescription</key><string>识别待输入的五笔字母，并在按住 Control+Option+K 时显示字根键盘。</string>
 </dict>
 </plist>

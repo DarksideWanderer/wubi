@@ -1,0 +1,9 @@
+{
+  "source": "https://github.com/mozillazg/pinyin-data/tree/9d05c9e29cb6a7e5c79f2f5279f5c1014246a19a",
+  "commit": "9d05c9e29cb6a7e5c79f2f5279f5c1014246a19a",
+  "source_file": "pinyin.txt",
+  "source_sha256": "90c11bd680ccfe7f2617a6e25abdb1fb87b5540df3e6f011ca50aaf3c7263a89",
+  "characters": 44440,
+  "syllables": 426,
+  "normalization": "Tone-insensitive, u-diaeresis mapped to v; all character readings retained."
+}

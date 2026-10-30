@@ -26,6 +26,7 @@ namespace WubiCoach {
         public readonly Dictionary<string,CharacterInfo> Characters = new Dictionary<string,CharacterInfo>();
         readonly Dictionary<string, Dictionary<string,double>> transitions = new Dictionary<string, Dictionary<string,double>>();
         readonly Dictionary<string,double> frequencies = new Dictionary<string,double>();
+        public readonly PinyinIndex Pinyin;
         public int PhraseCount { get; private set; }
         public LearningEngine(string directory) {
             foreach (var line in File.ReadLines(Path.Combine(directory,"decomposition.tsv"),Encoding.UTF8).Skip(1)) {
@@ -51,6 +52,7 @@ namespace WubiCoach {
             // Stable common-character prior when no suffix is found.
             string common="的了是在我有和你不这人们中大为上个国到说时要就出会可也对生能而子那得于着下自之年过发后作里用道行所然家种事成多天好学谢见气欢想今明去吃饭工作生活";
             for(int i=0;i<common.Length;i++) Add(frequencies,common[i].ToString(),100-i);
+            Pinyin=new PinyinIndex(Path.Combine(directory,"pinyin.tsv"),frequencies,new HashSet<string>(Characters.Keys));
         }
         static void Add(Dictionary<string,double> d,string k,double v) { double old; d.TryGetValue(k,out old); d[k]=old+v; }
         void Train(string text,double weight) {
@@ -83,7 +85,7 @@ namespace WubiCoach {
             foreach(var item in frequencies) if(Characters.ContainsKey(item.Key)) Add(scores,item.Key,item.Value*0.00001);
             if(codePrefix.Length>0) foreach(var info in Characters.Values) if(info.Code.StartsWith(codePrefix,StringComparison.Ordinal) && !scores.ContainsKey(info.Character))scores[info.Character]=0;
             return scores.Where(p=>codePrefix.Length==0||Characters[p.Key].Code.StartsWith(codePrefix,StringComparison.Ordinal)||Characters[p.Key].ShortCode.Split(' ').Any(c=>c.StartsWith(codePrefix,StringComparison.Ordinal)))
-                .OrderByDescending(p=>p.Value).ThenBy(p=>p.Key,StringComparer.Ordinal).Take(5)
+                .OrderByDescending(p=>p.Value).ThenBy(p=>p.Key,StringComparer.Ordinal).Take(18)
                 .Select(p=>new Candidate {Info=Characters[p.Key],Reason=(reasons.ContainsKey(p.Key)?reasons[p.Key]:"常用字补足")+(codePrefix.Length>0?" · "+codePrefix:"")}).ToList();
         }
         public static string Limit(string text,int count) {

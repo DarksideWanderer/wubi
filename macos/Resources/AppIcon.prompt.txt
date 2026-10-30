@@ -1,0 +1,12 @@
+Generated with the built-in image_gen tool.
+Source asset: AppIcon.png
+
+Use case: logo-brand
+Asset type: production macOS application icon, square 1024 × 1024 PNG.
+Primary request: A beautifully crafted native Mac app icon for 五笔伴学, a Chinese Wubi keyboard learning companion. Existing app uses dark jade teal, pale sage and warm off-white.
+Subject: a single large, beautifully proportioned Chinese character "五" in warm porcelain white, centered on a rich jade-teal rounded square keycap. The character must read exactly 五 with correct Chinese strokes, very bold, simple geometric calligraphic construction, refined softened edges. The keycap subtly evokes a physical keyboard key with a shallow beveled lower edge.
+Style: premium contemporary macOS icon, restrained tactile 3D, soft ceramic enamel, elegant gentle light from upper left, deep teal at lower right and luminous jade at upper left, crisp silhouette, sophisticated quiet depth.
+Composition: precisely front-facing, no tilt or perspective. The main rounded square is centered, spans about 84% of canvas width, large continuous macOS-style corner curves; generous transparent margins around it. The white 五 occupies about 56% of keycap width. One very subtle short warm-gold accent inset near the lower keycap edge, subordinate to the character. Minimal and highly legible at 32 pixels.
+Background: genuine transparency outside the rounded-square icon, including corners. Soft restrained shadow beneath the keycap.
+Text (verbatim): "五" only.
+Avoid: extra letters, extra Chinese characters, tiny details, keyboard grids, pencils, busy decoration, mockup scenes, outer frame, watermark, neon, excessive glossy glare.

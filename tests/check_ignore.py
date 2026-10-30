@@ -6,6 +6,8 @@ import tempfile
 
 PROJECT = Path(__file__).resolve().parent.parent
 IGNORED = [
+    ".signing/WubiCoach.keychain-db", ".signing/keychain-password", ".signing/certificate.der",
+    "backup.p12", "backup.pfx",
     "dist/WubiCoach.exe", "dist/macOS/WubiCoach.app/Contents/MacOS/WubiCoach",
     "artifacts/WubiCoach.zip", "WubiCoach-portable.zip", "WubiCoach-macOS.zip",
     "macos/.build/debug/WubiCoach", "macos/.swiftpm/configuration/workspace-state.json",
@@ -21,7 +23,9 @@ TRACKED = [
     "macos/Package.swift", "macos/Package.resolved", "macos/build.sh",
     "macos/Resources/Info.plist", "macos/Sources/WubiCore/LearningEngine.swift",
     "macos/Tests/WubiCoreTests/CoreTests.swift", "tests/fixtures/predictions.json",
-    "tests/check_ignore.py", ".env.example",
+    "tests/check_ignore.py", ".env.example", "data/pinyin.tsv", "data/PINYIN-LICENSE.txt",
+    "data/PINYIN-SOURCE.json", "tools/build_pinyin.py", "tests/fixtures/pinyin.tsv",
+    "macos/setup-signing.sh", "macos/sign.sh",
 ]
 
 

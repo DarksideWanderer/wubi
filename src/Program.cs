@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -26,11 +27,11 @@ namespace WubiCoach {
                     if(args.Contains("--ime-demo"))window.Demo("直","R");else window.Demo("我想学习");
                     if(args.Contains("--keyboard-demo"))window.SetKeyboardVisible(true);
                     var board=window.Artboard;
-                    board.Measure(new Size(1004,double.PositiveInfinity));
-                    board.Arrange(new Rect(0,0,1004,board.DesiredSize.Height));
+                    board.Measure(new Size(800,double.PositiveInfinity));
+                    board.Arrange(new Rect(0,0,800,board.DesiredSize.Height));
                     board.UpdateLayout();
                     int height=(int)Math.Ceiling(board.RenderSize.Height);
-                    var bitmap=new RenderTargetBitmap(1004,height,96,96,PixelFormats.Pbgra32);bitmap.Render(board);
+                    var bitmap=new RenderTargetBitmap(800,height,96,96,PixelFormats.Pbgra32);bitmap.Render(board);
                     var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));
                     using(var stream=File.Create(args[args.Length-1]))png.Save(stream);
                     return 0;
@@ -53,17 +54,17 @@ namespace WubiCoach {
             Check(model.Characters["好"].Identification,"identification code marked",log);
             Check(model.Characters["人"].KeyUnit,"key-name character marked",log);
             Check(model.Characters["一"].StrokeUnit,"single-stroke character marked",log);
-            Check(model.Predict("你好").Count==5,"five unique next characters",log);
+            Check(model.Predict("你好").Count==18,"eighteen unique next characters",log);
             Check(model.Predict("我想学").Any(p=>p.Info.Character=="习"),"learning continuation",log);
             Check(model.Predict("谢谢").Any(p=>p.Info.Character=="你"),"thanks continuation",log);
             Check(model.Predict("中华人民共和")[0].Info.Character=="国","longest suffix dominates",log);
-            Check(model.Predict("xyz").Count==5,"unknown context fallback",log);
+            Check(model.Predict("xyz").Count==18,"unknown context fallback",log);
             Check(model.Predict("直","r")[0].Info.Character=="接","zhi + r predicts jie first",log);
             Check(model.Predict("直","ru")[0].Info.Character=="接","prefix ru retains jie",log);
             Check(model.Predict("直","ruvg").Count==1&&model.Predict("直","ruvg")[0].Info.Character=="接","full code ruvg narrows to jie",log);
-            Check(model.Predict("直","R").All(c=>c.Info.Code.StartsWith("R")),"all five r candidates obey code prefix",log);
-            Check(model.Predict("直","R").Count==5,"five code-filtered candidates",log);
-            Check(model.Predict("直","").Count==5,"empty preedit restores context prediction",log);
+            Check(model.Predict("直","R").All(c=>c.Info.Code.StartsWith("R")),"all eighteen r candidates obey code prefix",log);
+            Check(model.Predict("直","R").Count==18,"eighteen code-filtered candidates",log);
+            Check(model.Predict("直","").Count==18,"empty preedit restores context prediction",log);
             Check(model.Predict("直","AYYY").Count==0,"no-match prefix does not show unrelated characters",log);
             Check(CompositionSnapshot.NormalizeCode(" rU ")=="RU"&&CompositionSnapshot.NormalizeCode("123")==""&&CompositionSnapshot.NormalizeCode("abcde")=="","bounded five-stroke prefix normalization",log);
             Check(LearningEngine.Limit(new string('甲',90)+"乙",80).Length==80,"context bounded to 80",log);
@@ -73,10 +74,46 @@ namespace WubiCoach {
             Check(new Typeface(fontFamily,FontStyles.Normal,FontWeights.Normal,FontStretches.Normal).TryGetGlyphTypeface(out glyphs),"dedicated radical font loaded",log);
             Check(model.Characters.Values.SelectMany(c=>c.Units).Distinct().Where(c=>c>='\uE000'&&c<='\uF8FF').All(c=>glyphs.CharacterToGlyphMap.ContainsKey(c)),"every custom radical glyph exists in font (standard Han glyphs use WPF fallback)",log);
             foreach(var text in new[]{"","我想","中国","\n","hello","学习五笔"}) {
-                var items=model.Predict(text);Check(items.Count==5&&items.Select(p=>p.Info.Character).Distinct().Count()==5,"valid unique candidates "+text,log);
+                var items=model.Predict(text);Check(items.Count==18&&items.Select(p=>p.Info.Character).Distinct().Count()==18,"valid unique candidates "+text,log);
             }
+            foreach(var line in File.ReadLines(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","tests","fixtures","predictions18.tsv"),Encoding.UTF8).Skip(1)) {
+                var p=line.Split('\t');
+                Check(string.Join(",",model.Predict(p[0],p[1]).Select(item=>item.Info.Character))==p[2],"shared eighteen-candidate order "+p[0]+" + "+p[1],log);
+            }
+            PinyinTests(model,log);
             log.AppendLine("Characters="+model.Characters.Count+"; phrases="+model.PhraseCount);
             File.WriteAllText(args[args.Length-1],log.ToString(),Encoding.UTF8);
+        }
+        static void PinyinTests(LearningEngine model,StringBuilder log) {
+            var index=model.Pinyin;
+            Check(index.CharacterCount==44440,"all 44,440 pinyin characters loaded",log);
+            string fixture=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","tests","fixtures","pinyin.tsv");
+            foreach(var line in File.ReadLines(fixture,Encoding.UTF8).Skip(1)) {
+                var p=line.Split('\t');var items=index.Search(p[0]);
+                Check(items.Count==int.Parse(p[1])&&items.Select(i=>i.Character).Distinct().Count()==items.Count,"complete unique pinyin "+p[0],log);
+                Check(items.All(i=>(i.Character.Length==1||i.Character.Length==2&&char.IsSurrogatePair(i.Character,0))&&i.Readings.Contains(p[0])),"single-character readings "+p[0],log);
+                using(var hash=SHA256.Create()) {
+                    string digest=BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(string.Concat(items.Select(i=>i.Character))))).Replace("-","").ToLowerInvariant();
+                    Check(digest==p[2],"shared macOS result order "+p[0],log);
+                }
+            }
+            Check(index.Search(" NI ").Select(i=>i.Character).SequenceEqual(index.Search("ni").Select(i=>i.Character)),"pinyin ignores case and surrounding spaces",log);
+            Check(index.Search("lue").Select(i=>i.Character).SequenceEqual(index.Search("lve").Select(i=>i.Character)),"lue alias",log);
+            Check(index.Search("nue").Select(i=>i.Character).SequenceEqual(index.Search("nve").Select(i=>i.Character)),"nue alias",log);
+            Check(index.Search("lv").Any(i=>i.Character=="吕")&&!index.Search("lu").Any(i=>i.Character=="吕"),"lv distinct from lu",log);
+            Check(index.Search("xing").Any(i=>i.Character=="行")&&index.Search("hang").Any(i=>i.Character=="行"),"all polyphonic readings indexed",log);
+            Check(index.Search("ji").Any(i=>i.Character.Length==2),"supplementary characters retained",log);
+            Check(index.Search("shi").Count>5&&index.Search("shi").Any(i=>!model.Characters.ContainsKey(i.Character)),"uncapped results include characters outside Wubi table",log);
+            foreach(var q in new[]{"","nihao","ni3","你好","ni hao","ni'hao","!!!","ß"})Check(index.Search(q).Count==0,"invalid or non-syllable query "+q,log);
+            var hold=new HoldKeyboardShortcut();
+            Check(hold.Handle(0x4B,true,true)&&hold.Visible,"Ctrl+Alt+K hold",log);
+            Check(hold.Handle(0x4B,true,true)&&hold.Visible,"repeat stays visible",log);
+            hold.ModifiersChanged(false);Check(!hold.Visible&&hold.Pressed,"modifier release hides roots",log);
+            Check(hold.Handle(0x4B,true,false)&&!hold.Visible,"repeat after modifier release stays consumed",log);
+            Check(hold.Handle(0x4B,false,false)&&!hold.Pressed,"K release consumed",log);
+            Check(!hold.Handle(0x4B,true,false),"ordinary K passes through",log);
+            Check(!hold.Handle(0x4B,true,true)&&!hold.Visible,"adding modifiers to held K cannot activate",log);
+            hold.Reset();Check(!hold.Handle(0x77,true,true),"F8 passes through",log);
         }
         static void RunFixture(string[] args) {
             var app=new Application();var window=new Window {Title="WubiCoach automated capture fixture",Width=460,Height=240,Topmost=true};
@@ -113,10 +150,10 @@ namespace WubiCoach {
                     if(phase==8) {Check(snapshot.Composition.CodePrefix=="R","resume starts fresh",log);snapshot.Available=false;listener.Apply(snapshot,"password");
                         var clean=new ContextSnapshot {Available=true,Window=snapshot.Window,Text="直"};listener.Apply(clean,"fixture");Check(clean.Composition.CodePrefix=="","unavailable/password context discards pending code",log);
                         key(0x52);}
-                    if(phase==9) {Check(snapshot.Composition.CodePrefix=="R","code ready before holding F8",log);KeybdEvent(0x77,0,0,UIntPtr.Zero);}
-                    if(phase==10) {Check(keyboardVisible,"holding F8 switches to keyboard",log);Check(snapshot.Composition.CodePrefix=="R","F8 press preserves pending code",log);KeybdEvent(0x77,0,0,UIntPtr.Zero);}
-                    if(phase==11) {Check(keyboardVisible,"F8 autorepeat keeps keyboard visible",log);KeybdEvent(0x77,0,2,UIntPtr.Zero);}
-                    if(phase==12) {Check(!keyboardVisible,"releasing F8 restores candidates",log);Check(snapshot.Composition.CodePrefix=="R","F8 release preserves pending code",log);
+                    if(phase==9) {Check(snapshot.Composition.CodePrefix=="R","code ready before holding Ctrl+Alt+K",log);KeybdEvent(0x11,0,0,UIntPtr.Zero);KeybdEvent(0x12,0,0,UIntPtr.Zero);KeybdEvent(0x4B,0,0,UIntPtr.Zero);}
+                    if(phase==10) {Check(keyboardVisible,"holding Ctrl+Alt+K switches to keyboard",log);Check(snapshot.Composition.CodePrefix=="R","Ctrl+Alt+K press preserves pending code",log);KeybdEvent(0x4B,0,0,UIntPtr.Zero);}
+                    if(phase==11) {Check(keyboardVisible,"Ctrl+Alt+K autorepeat keeps keyboard visible",log);KeybdEvent(0x12,0,2,UIntPtr.Zero);KeybdEvent(0x4B,0,2,UIntPtr.Zero);KeybdEvent(0x11,0,2,UIntPtr.Zero);}
+                    if(phase==12) {Check(!keyboardVisible,"releasing Ctrl+Alt+K restores candidates",log);Check(snapshot.Composition.CodePrefix=="R","Ctrl+Alt+K release preserves pending code",log);
                         File.WriteAllText(args[args.Length-1],log.ToString(),Encoding.UTF8);window.Close();}
                     phase++;
                 } catch(Exception ex) {failure=ex;window.Close();}
@@ -146,7 +183,7 @@ namespace WubiCoach {
                 double compactHeight=overlay.Height;
                 double compactWidth=overlay.Width;
                 overlay.SetKeyboardVisible(true);
-                Check(overlay.KeyboardVisible&&!overlay.CandidatesVisible,"holding F8 replaces candidates with keyboard",log);
+                Check(overlay.KeyboardVisible&&!overlay.CandidatesVisible,"holding Ctrl+Alt+K replaces candidates with keyboard",log);
                 Check(overlay.Height==compactHeight&&overlay.Width==compactWidth,"keyboard mode keeps window dimensions unchanged",log);
                 overlay.SetKeyboardVisible(false);
                 Check(!overlay.KeyboardVisible&&overlay.CandidatesVisible,"release restores candidates and hides keyboard",log);
