@@ -1,0 +1,91 @@
+[
+  {
+    "characters": [
+      "接",
+      "播",
+      "指",
+      "拨",
+      "抒"
+    ],
+    "prefix": "R",
+    "context": "直"
+  },
+  {
+    "characters": [
+      "接",
+      "撞",
+      "摘",
+      "拉",
+      "拼"
+    ],
+    "prefix": "RU",
+    "context": "直"
+  },
+  {
+    "characters": [
+      "接"
+    ],
+    "prefix": "RUVG",
+    "context": "直"
+  },
+  {
+    "characters": [
+      "啊",
+      "呀",
+      "朋",
+      "友",
+      "的"
+    ],
+    "prefix": "",
+    "context": "你好"
+  },
+  {
+    "characters": [
+      "习",
+      "生",
+      "院",
+      "校",
+      "家"
+    ],
+    "prefix": "",
+    "context": "我想学"
+  },
+  {
+    "characters": [
+      "你",
+      "大",
+      "谢",
+      "绝",
+      "幕"
+    ],
+    "prefix": "",
+    "context": "谢谢"
+  },
+  {
+    "characters": [
+      "国",
+      "制",
+      "谐",
+      "平",
+      "田"
+    ],
+    "prefix": "",
+    "context": "中华人民共和"
+  },
+  {
+    "characters": [
+      "的",
+      "您",
+      "网",
+      "页",
+      "首"
+    ],
+    "prefix": "",
+    "context": "hello"
+  },
+  {
+    "characters": [],
+    "prefix": "AYYY",
+    "context": "直"
+  }
+]

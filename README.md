@@ -1,0 +1,75 @@
+# 五笔伴学
+
+支持 Windows 10 / 11 和 macOS 13+ 的五笔 86 版学习悬浮窗。默认置顶，不抢走正在输入的窗口焦点。两端共用 `data/` 内的词库、拆字资料与字体。
+
+默认使用紧凑窗口：显示上下文、最多 5 个候选和拆字说明。**按住全局 F8 时，同一区域切换为 QWERTY 字根键盘并隐藏候选；松开立即恢复候选，窗口大小始终不变**。F8 不会清空待输入编码，也不会传给正在输入的应用。在 Mac 上，若 F8 默认控制媒体播放，请按住 `Fn + F8`，或将功能键设为标准 F1～F12。
+
+macOS 的构建、授权和验收步骤见 [macos/README.md](macos/README.md)。当前 Windows 主机完成了 Windows 回归测试、macOS 源码检查和打包脚本检查；macOS 原生编译与跨应用权限交互需要在 Mac 或 GitHub Actions 上继续验证。
+
+## Windows 启动
+
+双击 `dist/WubiCoach.exe`。保留旁边的 `data` 目录。首次运行加载离线词库需要几秒钟。
+
+在记事本、浏览器文本框或其他支持 Windows UI Automation 的编辑器里打字。输入法上屏后，悬浮窗显示光标前最多 80 个字符，并按离线词库联想 5 个下一字。
+
+现在也支持尚未上屏的五笔字母：例如已输入「直」，再按 `r`，界面会显示「正在输入：R」，优先推荐「接」，展示完整码 `RUVG` 和取码字根；继续输入 `ru`、`ruvg` 会缩小候选范围。
+
+- 每个候选分别显示汉字、完整五笔码、简码、实际取码字根及联想依据。
+- 点击候选，高亮编码对应的键位；特殊编码规则显示在候选下方。
+- 按住 `F8` 时只显示 QWERTY 字根键盘，隐藏候选；松开恢复候选。窗口大小不变，长按重复不会切成开关模式。
+- 键盘显示各键字根，悬停查看口诀。Z 是学习键，具体用法取决于输入法。
+- `Ctrl+Alt+W` 暂停 / 继续读取；暂停即清除上下文。
+- `Ctrl+Alt+T` 切换置顶。也可点击窗口按钮。
+- 字母 `A～Y` 累积为当前编码（最多 4 位），退格删除一位；回车、空格、数字选词、Esc、导航键或快捷键清空编码。切换输入框、暂停或发现新字上屏时也清空。四码后继续输入按新字处理。
+- 「编码提示」按钮控制是否使用字母前缀筛选。使用拼音或英文时可关闭它。
+- 「手动 / 查字」可分别填入上下文和待输入字母预测，或输入一个汉字查询拆分。点击「继续」恢复跨窗口读取。
+- 拖动系统标题栏移动窗口，拖动边缘调整大小。
+
+## 跨窗口读取的边界
+
+程序在后台 MTA 线程通过 Windows UI Automation 的 `TextPattern.GetSelection` 获取插入点，向前截取最多 80 字。已上屏上下文来自目标控件；尚未上屏的字母单独显示、单独用于筛选，不混入中文上下文。
+
+字母通过 Windows 低级键盘监听取得，只保留当前待输入编码；普通输入按键原样传递，只有用于展开键盘的 F8 被程序消费。输入法若开放 `IUIAutomationTextEditPattern.GetActiveComposition` 或传统 `ImmGetCompositionStringW`，还会优先使用真实预编辑串和组合起点。未提供这些信息时显示「按键推测」，使用字母、回车和选词按键维护编码。
+
+按键推测不等同于输入法内部状态：自定义自动上屏规则、鼠标选词和切换中英文可能使推测暂时不一致。可按回车或 Esc 清空，或关闭编码提示。程序不读取输入法的完整候选词列表。`R` 并不只代表扌；筛选依据是完整五笔码的前缀，候选中也可能出现 R 键上的其他字根。
+
+目标控件必须公开文本与选择范围。自绘编辑器、游戏、部分聊天窗口、部分终端或禁用辅助功能的 Chromium 应用可能无法自动读取。遇到这种情况界面明确提示，使用手动上下文即可；不会假装已获取整屏内容。Chromium 程序有时需要其自身启用辅助功能支持，例如启动参数 `--force-renderer-accessibility`，具体取决于应用。管理员程序可能要求本程序以同等权限运行。
+
+采用轮询，约每 180 毫秒读取一次；若目标应用的辅助功能接口阻塞，后台读取可能延迟，但悬浮窗界面仍可操作。密码控件不参与读取与预测，待处理编码会被丢弃。不保存输入历史，不访问剪贴板、不上传文字。暂停会停用按键处理并清空编码；退出时移除键盘监听。应用运行时没有网络请求。
+
+## 预测与字根说明
+
+预测为离线词库后缀模型：对上下文末尾 1～6 字匹配，较长匹配优先，按词频的平方根平滑排序。存在待输入编码时先筛选五笔前缀相符的字，再根据上下文排序，用相同前缀的常用字补足；匹配不足 5 字时只显示实际匹配项。80 字上下文用于展示与截取，模型实际使用最后 6 字；它不是语言大模型，无法保证语义预测准确。词库和自编日常语料覆盖之外的表达联想较弱。
+
+五笔码表包含 13,178 字，其中 11,187 字有专用字体拆分资料；少数罕用字会明确标记「暂无拆分资料」。键盘展示标准基本字根。取码字根列的末位可能是识别码符号；下方说明会注明。键名字、成字字根、单笔画分别显示对应取码规则。超过四字根的汉字显示用于编码的首、次、三、末字根，不代表完整汉字构形分解。简码的候选顺序依具体输入法词库而异。
+
+## Windows 构建与验证
+
+无需安装 .NET SDK 或第三方包；使用 Windows 自带 .NET Framework 4.x 编译器，目标为 .NET Framework 4.8（Windows 10/11 通常自带）。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+.\dist\WubiCoach.exe --self-test "$PWD\tests\self-test-result.txt"
+.\dist\WubiCoach.exe --render "$PWD\tests\preview.png"
+powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
+```
+
+图形程序命令行测试异步退出；使用 `Start-Process -Wait -PassThru` 可以获取退出码。源码位于 `src`。授权与数据来源见 `THIRD-PARTY.md`。
+
+完整测试包含真实键盘钩子与受控测试窗口中的 R、U、退格、回车、空格、暂停/恢复，以及跨进程中文读取、密码排除和不抢焦点检查。按键仅在确认测试窗口处于前台后发送。
+
+额外覆盖 F8 按下/松开、待输入编码保留、两种视图互斥、窗口尺寸始终不变及切换时不抢焦点。`tests/fixtures/predictions.json` 由 Windows 预测引擎生成，用作 macOS 测试的共同基准。
+
+## 发布到 GitHub
+
+提交 `.gitignore`、`.gitattributes`、`src/`、`macos/`、`data/`、`tests/`、`.github/`、构建脚本和许可说明。`dist/`、发布压缩包、测试截图和输出、Swift/Xcode 缓存及本机配置已被排除；词库和字体需要保留在仓库中。
+
+```shell
+python tests/check_ignore.py
+```
+
+该检查在临时 Git 仓库里验证忽略规则，不会初始化或修改当前目录的 Git 状态。这个工作目录尚未初始化 Git；自行设置远程仓库后再提交推送。
+
+推送后 `.github/workflows/build.yml` 自动执行 macOS 核心测试、Apple Silicon / Intel Universal 构建，以及 Windows 引擎测试。成功后可在对应 Actions 运行的 Artifacts 中下载程序包。工作流只生成构建产物，不自动发布 Release。
+
+Windows 接口参考：[活动组合串](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomationtexteditpattern-getactivecomposition)、[传统 IME 组合串](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetcompositionstringw)。

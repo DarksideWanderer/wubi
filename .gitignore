@@ -1,0 +1,53 @@
+# Build and release output (keep shared data/ and all source files).
+/dist/
+/artifacts/
+/WubiCoach-portable.zip
+/WubiCoach-*.zip
+**/bin/
+**/obj/
+*.exe
+*.dll
+*.pdb
+*.app/
+*.dmg
+*.dSYM/
+
+# Swift Package Manager / Xcode local state.
+**/.build/
+**/.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# IDE state and local configuration.
+.vs/
+.idea/
+*.user
+*.suo
+.env
+.env.*
+!.env.example
+
+# Test output and temporary files.
+*.log
+/tests/*.png
+/tests/*-result.txt
+/test-results/
+/coverage/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+__pycache__/
+*.py[cod]
+
+# OS metadata.
+.DS_Store
+._*
+.AppleDouble/
+.LSOverride
+Thumbs.db
+Desktop.ini

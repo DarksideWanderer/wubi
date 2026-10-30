@@ -1,0 +1,58 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Test prediction, code editing and hold gesture
+        run: swift test --package-path macos
+      - name: Build Apple Silicon and Intel application
+        run: bash macos/build.sh --universal
+      - name: Include corresponding source
+        run: git archive --format=zip --output=dist/macOS/WubiCoach-source.zip HEAD
+      - uses: actions/upload-artifact@v7
+        with:
+          name: WubiCoach-macOS-universal
+          path: dist/macOS/*.zip
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and test offline engine
+        shell: pwsh
+        run: |
+          ./build.ps1
+          $resultPath = Join-Path $PWD 'tests/self-test-result.txt'
+          $test = Start-Process -FilePath ./dist/WubiCoach.exe -ArgumentList '--self-test', ('"' + $resultPath + '"') -Wait -PassThru -WindowStyle Hidden
+          if ($test.ExitCode -ne 0) {
+            Get-Content ./dist/test-error.log -ErrorAction SilentlyContinue
+            throw 'Offline engine tests failed'
+          }
+          Get-Content $resultPath
+      - name: Check publication exclusions
+        run: python tests/check_ignore.py
+      - name: Package Windows binary and source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Compress-Archive -LiteralPath dist,src,data,tests,macos,.github,.gitignore,.gitattributes,build.ps1,README.md,THIRD-PARTY.md,LICENSE -DestinationPath artifacts/WubiCoach-Windows.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: WubiCoach-Windows
+          path: artifacts/WubiCoach-Windows.zip
+          if-no-files-found: error
