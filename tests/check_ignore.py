@@ -6,6 +6,7 @@ import tempfile
 
 PROJECT = Path(__file__).resolve().parent.parent
 IGNORED = [
+    "preferences.sqlite3", "preferences.sqlite3-journal", "preferences.sqlite3-wal", "preferences.sqlite3-shm",
     ".signing/WubiCoach.keychain-db", ".signing/keychain-password", ".signing/certificate.der",
     "backup.p12", "backup.pfx",
     "dist/WubiCoach.exe", "dist/macOS/WubiCoach.app/Contents/MacOS/WubiCoach",

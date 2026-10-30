@@ -81,6 +81,7 @@ namespace WubiCoach {
                 Check(string.Join(",",model.Predict(p[0],p[1]).Select(item=>item.Info.Character))==p[2],"shared eighteen-candidate order "+p[0]+" + "+p[1],log);
             }
             PinyinTests(model,log);
+            PreferenceTests.Run(model,log);
             log.AppendLine("Characters="+model.Characters.Count+"; phrases="+model.PhraseCount);
             File.WriteAllText(args[args.Length-1],log.ToString(),Encoding.UTF8);
         }

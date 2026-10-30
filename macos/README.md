@@ -5,12 +5,12 @@
 ## 功能
 
 - 置顶、跨桌面显示，候选点击保持原应用的输入焦点。
-- 默认显示上下文、候选和取码说明。按住 **Control + Option + K（⌃⌥K）** 时在同一区域只显示字根键盘，隐藏候选；松开恢复候选。窗口尺寸始终不变，候选和编码状态保留。松开 K、Control 或 Option 中任一键即恢复候选，无需使用功能键。主窗口默认及最小内容尺寸为 800 × 500，不滚动；左右各九个候选和完整字根键盘均可显示。
+- 默认显示上下文、候选和取码说明。按住 **Control + Option + K（⌃⌥K）** 时在同一区域只显示字根键盘，隐藏候选；松开恢复候选。窗口尺寸始终不变，候选和编码状态保留。松开 K、Control 或 Option 中任一键即恢复候选，无需使用功能键。主窗口默认及最小内容尺寸为 800 × 420，不滚动；左侧九个个人偏好、右侧九个去重后的常规候选和完整字根键盘均可显示。
 - Accessibility 读取当前输入框光标前最多 80 个 UTF-16 单元，不使用剪贴板。
 - 监听 QWERTY 字母维护最多 4 位待输入编码，结合中文上下文推荐最多 18 个下一字。例如「直 + R」优先显示「接 · RUVG」。
-- 退格删除一位；回车、空格、数字选词、Esc、导航键及快捷键清空。四码后继续输入按新字处理。
+- 未上屏编码支持 `←` / `→` 移动光标并在中间插入，例如 `yt → ← → r` 得到 `yrt`。Delete 退格删除光标前一位，Fn+Delete 前向删除光标后一位；不会因为输入框的辅助功能文本短暂滞后而丢失剩余编码。回车、空格、数字选词、Esc、其他导航键及快捷键清空。四码后继续输入按新字处理。
 - `Control + Option + W` 暂停 / 继续，`Control + Option + T` 切换置顶。
-- 三个组合键均通过 macOS 系统独占全局热键注册，在 VS Code 等应用前台也优先于其本地快捷键，且不依赖辅助功能或输入监控权限。窗口底部显示注册状态；若组合键已被其他程序注册为全局热键，会明确显示冲突。关闭占用程序后可重启本应用重试。
+- 三个组合键均通过 macOS 系统独占全局热键注册，在 VS Code 等应用前台也优先于其本地快捷键，且不依赖辅助功能或输入监控权限。「帮助」按钮悬停提示显示注册状态；若组合键已被其他程序注册为全局热键，会明确显示冲突。关闭占用程序后可重启本应用重试。
 - 手动窗口内置单字拼音查字：直接输入 `shi` / `zhong` / `lv`，无需切换系统输入法；显示全部同音单字，点选预览五笔码和字根，回车或「查看五笔」显示到主窗口。保留「上下文 / 汉字查码」标签；查字后返回其他应用自动继续读取，不会进入持续的手动模式；原本已暂停时保持暂停。
 - 菜单栏「五笔」可重新显示窗口、暂停、切换置顶及退出；关闭主窗口即退出。
 
@@ -70,7 +70,7 @@ VS Code 等 Electron 编辑器会收到一次文本接口启用请求；如果�
 swift test --package-path macos
 ```
 
-自动测试校验词库数量、编码与字根、共同的 Windows 预测结果、前缀筛选、退格/提交状态，按住手势的重复事件和释放，以及全部 426 个拼音音节的完整结果数量、无重复码点与排序哈希。GitHub Actions 还会执行完整原生应用的 Universal 编译。
+自动测试校验词库数量、编码与字根、共同的 Windows 预测结果、前缀筛选、编码内光标移动、插入、前后删除、滞后的辅助功能快照与提交状态，按住手势的重复事件和释放，以及全部 426 个拼音音节的完整结果数量、无重复码点与排序哈希。GitHub Actions 还会执行完整原生应用的 Universal 编译。
 
 已在 Apple Silicon Mac 完成原生构建、候选/字根键盘布局渲染及全局热键实测。后续验收项目：
 
@@ -84,3 +84,9 @@ swift test --package-path macos
 接口参考：[NSPanel](https://developer.apple.com/documentation/appkit/nspanel)、[CGEvent](https://developer.apple.com/documentation/coregraphics/cgevent)、[Accessibility 范围读取](https://developer.apple.com/documentation/applicationservices/1461203-axuielementcopyparameterizedattr)。
 
 签名机制参考：[Apple：Designated Requirements 与跨版本授权](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)。
+
+## 本机偏好
+
+左侧优先使用 SQLite 中学习的个人偏好，不足九个时按常规联想补齐；右侧显示常规联想排除左侧后的前九个，两侧都遵循五笔前缀筛选。点击候选查看计 4 次，确认上屏计 1 次。自动学习只接受同一输入框中、已观察到编码后的短追加，不记录首次读取、退格、切换输入框或长段粘贴；未观察到预编辑时可能无法学习。单字查询不会计入。
+
+数据库位于 `~/Library/Application Support/org.wubicoach.desktop/preferences.sqlite3`，只记录最多三个前置汉字、下一个字及累计次数，无完整输入历史，不上传。重启或重建应用会保留数据；退出应用后删除该文件可重置。数据库异常时左栏提示并回退到常规联想。Windows 使用相同规则，数据库位于 `%LOCALAPPDATA%\WubiCoach\preferences.sqlite3`。

@@ -92,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func showHelp() {
         let alert = NSAlert()
         alert.messageText = "五笔伴学 · macOS"
-        alert.informativeText = "在其他应用中输入中文，上屏后读取光标前最多 80 字。按字母维护当前五笔编码，例如「直 + R」预测「接 · RUVG」。退格删除一位；回车、空格、数字选词和导航键清空。\n\n全局快捷键独立于读取权限，在其他应用前台也可使用；窗口底部显示注册状态。读取文字和编码时，请点击「权限」，在系统设置 → 隐私与安全性中授权辅助功能和输入监控；授权后可重启应用。受保护输入和密码框不参与预测。\n\n按住 \(HoldKeyboardShortcut.label) 查看字根键盘，松开任一组合键恢复候选；主窗口不滚动。候选点击不抢输入焦点，手动窗口可以输入文字。按键推测无法完整还原输入法内部候选列表和自定义上屏规则。\n\nControl+Option+W 暂停 / 继续\nControl+Option+T 切换置顶\n\n关闭主窗口即退出。词库、字体及许可见随附 THIRD-PARTY.md。"
+        alert.informativeText = "在其他应用中输入中文，上屏后读取光标前最多 80 字。按字母维护当前五笔编码，例如「直 + R」预测「接 · RUVG」。←/→在未上屏编码中移动，可在中间插入；退格删除光标前一位，Fn+Delete 删除光标后一位。回车、空格、数字选词和其他导航键清空。\n\n全局快捷键独立于读取权限，在其他应用前台也可使用；悬停「帮助」可查看注册状态。读取文字和编码时，请点击「权限」，在系统设置 → 隐私与安全性中授权辅助功能和输入监控；授权后可重启应用。受保护输入和密码框不参与预测。\n\n按住 \(HoldKeyboardShortcut.label) 查看字根键盘，松开任一组合键恢复候选；主窗口不滚动。候选点击不抢输入焦点，手动窗口可以输入文字。左 9 为个人偏好，不足时常规补齐；右 9 为常规联想排除左侧。点击候选和确认上屏会学习偏好并跨重启保留，仅本机保存最多三个前置汉字、下一字及次数，不保存完整输入历史、不上传。按键推测无法完整还原输入法内部候选列表和自定义上屏规则。\n\nControl+Option+W 暂停 / 继续\nControl+Option+T 切换置顶\n\n关闭主窗口即退出。词库、字体及许可见随附 THIRD-PARTY.md。"
         alert.addButton(withTitle: "知道了")
         alert.addButton(withTitle: "打开系统设置")
         if alert.runModal() == .alertSecondButtonReturn {

@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [.executable(name: "WubiCoach", targets: ["WubiCoach"])],
     targets: [
-        .target(name: "WubiCore"),
+        .systemLibrary(name: "CSQLite"),
+        .target(name: "WubiCore", dependencies: ["CSQLite"]),
         .executableTarget(name: "WubiCoach", dependencies: ["WubiCore"]),
         .testTarget(name: "WubiCoreTests", dependencies: ["WubiCore"])
     ]

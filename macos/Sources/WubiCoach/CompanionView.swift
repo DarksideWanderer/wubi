@@ -3,8 +3,8 @@ import WubiCore
 
 enum CompanionLayout {
     static let width: CGFloat = 800
-    static let height: CGFloat = 500
-    static let contentHeight: CGFloat = 334
+    static let height: CGFloat = 420
+    static let contentHeight: CGFloat = 328
 }
 
 struct CompanionView: View {
@@ -13,7 +13,7 @@ struct CompanionView: View {
     private let accent = Color(red: 0, green: 0.49, blue: 0.45)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("五笔伴学").font(.system(size: 21, weight: .bold))
@@ -25,7 +25,7 @@ struct CompanionView: View {
                 Button(model.codeEnabled ? "编码：开" : "编码：关") { model.codeEnabled.toggle() }
                 Button("手动 / 查字") { model.onManual?() }
                 Button("权限") { model.requestPermissions() }
-                Button("帮助") { model.onHelp?() }
+                Button("帮助") { model.onHelp?() }.help(model.shortcutStatus)
             }.buttonStyle(.bordered).controlSize(.small).font(.system(size: 12))
 
             if !model.permissions.isEmpty {
@@ -36,11 +36,7 @@ struct CompanionView: View {
                 if model.keyboardVisible { keyboardView }
                 else { candidateView }
             }.frame(height: CompanionLayout.contentHeight, alignment: .top)
-            Text(model.shortcutStatus).font(.system(size: 10)).lineLimit(1).help(model.shortcutStatus)
-                .foregroundColor(model.shortcutsReady ? accent : .orange)
-            Text("按住 ⌃⌥K 查看字根，松开恢复候选 · ⌃⌥W 暂停 / 继续 · ⌃⌥T 置顶")
-                .font(.caption).foregroundColor(.secondary)
-        }.padding(14)
+        }.padding(.horizontal, 14).padding(.vertical, 10)
             .frame(minWidth: CompanionLayout.width, maxWidth: .infinity, minHeight: CompanionLayout.height, maxHeight: .infinity, alignment: .topLeading)
             .foregroundColor(ink).background(Color(red: 0.95, green: 0.96, blue: 0.94))
             .environment(\.colorScheme, .light)
@@ -67,19 +63,20 @@ struct CompanionView: View {
             }.frame(maxWidth: .infinity, alignment: .leading).padding(6)
                 .background(Color(red: 0.89, green: 0.94, blue: 0.91)).cornerRadius(12)
 
-            HStack {
-                Text("接下来，可能想打…").font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Text("\(model.engine.characters.count) 字 · \(model.engine.phraseCount) 词").font(.caption).foregroundColor(.secondary)
-            }
+            HStack(spacing: 12) {
+                Text(model.preferenceNotice.isEmpty ? "个人偏好 · 不足时按常规补齐" : "偏好不可用 · 常规补齐")
+                    .help(model.preferenceNotice.isEmpty ? "点击候选与确认上屏的新字会保存在本机，作为个人偏好。" : model.preferenceNotice)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("常规联想 · 已排除左侧").frame(maxWidth: .infinity, alignment: .leading)
+            }.font(.system(size: 11, weight: .semibold))
             if model.candidates.isEmpty {
                 Text("当前编码没有匹配字，请退格或按回车清空编码。")
                     .font(.callout).foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 231, alignment: .topLeading)
             } else {
                 HStack(alignment: .top, spacing: 12) {
-                    candidateColumn(start: 0)
-                    candidateColumn(start: 9)
+                    candidateColumn(items: model.preferredCandidates, start: 0)
+                    candidateColumn(items: model.regularCandidates, start: 9)
                 }
             }
             Text(detail).font(.system(size: 11)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
@@ -87,7 +84,7 @@ struct CompanionView: View {
         }
     }
 
-    private func candidateColumn(start: Int) -> some View {
+    private func candidateColumn(items: [WubiCandidate], start: Int) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Text("序").frame(width: 20)
@@ -99,9 +96,9 @@ struct CompanionView: View {
             VStack(spacing: 2) {
                 ForEach(0..<9, id: \.self) { offset in
                     let index = start + offset
-                    if index < model.candidates.count {
-                        let candidate = model.candidates[index]
-                        Button { model.selected = candidate } label: {
+                    if offset < items.count {
+                        let candidate = items[offset]
+                        Button { model.select(candidate) } label: {
                             HStack(spacing: 4) {
                                 Text(String(format: "%02d", index + 1)).font(.system(size: 10)).foregroundColor(.secondary).frame(width: 20)
                                 Text(candidate.info.character).font(.system(size: 19, weight: .semibold)).frame(width: 28)

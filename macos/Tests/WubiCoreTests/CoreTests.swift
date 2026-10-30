@@ -4,6 +4,78 @@ import XCTest
 @testable import WubiCore
 
 final class CoreTests: XCTestCase {
+    func testPreferenceStorePersistenceCountsAndMinimalContext() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("preferences.sqlite3")
+        do {
+            let store = try PreferenceStore(url: url)
+            try store.record(context: "不保存这整段输入你好", character: "猫")
+            try store.record(context: "你好", character: "猫")
+            try store.record(context: "你好", character: "吗")
+            XCTAssertEqual(try store.scores(context: "")["猫"], 2.0 / 3.0)
+            XCTAssertEqual(PreferenceStore.contexts("private@example.com，输入你好"), ["", "好", "你好", "入你好"])
+            XCTAssertEqual(PreferenceStore.contexts("中文abc"), [""])
+        }
+        let reopened = try PreferenceStore(url: url)
+        XCTAssertGreaterThan(try reopened.scores(context: "你好")["猫"]!, try reopened.scores(context: "你好")["吗"]!)
+    }
+
+    func testPersonalizedColumnsFallbackLearningDedupAndCodeFilter() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let predictor = PersonalizedPredictor(engine: Self.engine, databaseURL: directory.appendingPathComponent("preferences.sqlite3"))
+        let baseline = Self.engine.predict(context: "直")
+        let cold = predictor.predict(context: "直")
+        XCTAssertEqual(cold.preferred, Array(baseline.prefix(9)))
+        XCTAssertEqual(cold.regular, Array(baseline.dropFirst(9)))
+        predictor.record(context: "直", character: "猫", explicit: true)
+        predictor.record(context: "你好", character: "吗", explicit: true)
+        for (context, prefix) in [("直", ""), ("你好", ""), ("直", "R"), ("直", "YYYY"), ("直", "VVVV"), ("直", "Q")] {
+            let columns = predictor.predict(context: context, codePrefix: prefix)
+            XCTAssertTrue(columns.preferred.count <= 9 && columns.regular.count <= 9)
+            XCTAssertEqual(Set(columns.all.map(\.id)).count, columns.all.count)
+            let left = Set(columns.preferred.map(\.id))
+            XCTAssertEqual(columns.regular, Array(Self.engine.predict(context: context, codePrefix: prefix).filter { !left.contains($0.id) }.prefix(9)))
+            XCTAssertTrue(columns.all.allSatisfy { prefix.isEmpty || $0.info.code.hasPrefix(prefix) || $0.info.shortCode.split(separator: " ").contains { $0.hasPrefix(prefix) } })
+        }
+        XCTAssertEqual(predictor.predict(context: "直").preferred.first?.id, "猫")
+        XCTAssertEqual(predictor.predict(context: "你好").preferred.first?.id, "吗")
+        XCTAssertTrue(predictor.notice.isEmpty)
+    }
+
+    func testPreferenceFailureFallsBackWithoutReplacingBrokenFile() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite3")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let contents = Data("broken database".utf8)
+        try contents.write(to: url)
+        let predictor = PersonalizedPredictor(engine: Self.engine, databaseURL: url)
+        XCTAssertFalse(predictor.notice.isEmpty)
+        XCTAssertEqual(predictor.predict(context: "直").all, Self.engine.predict(context: "直"))
+        predictor.record(context: "直", character: "猫")
+        XCTAssertEqual(try Data(contentsOf: url), contents)
+    }
+
+    func testCommittedLearningRequiresCompositionSameFocusAndShortAppend() {
+        var tracker = CommittedInputTracker()
+        XCTAssertTrue(tracker.observe(context: "你好", code: "", focus: "A").isEmpty)
+        XCTAssertTrue(tracker.observe(context: "你好", code: "Q", focus: "A").isEmpty)
+        let committed = tracker.observe(context: "你好猫", code: "", focus: "A")
+        XCTAssertEqual(committed.map { $0.context }, ["你好"])
+        XCTAssertEqual(committed.map { $0.character }, ["猫"])
+        XCTAssertTrue(tracker.observe(context: "你好猫", code: "", focus: "A").isEmpty)
+        XCTAssertTrue(tracker.observe(context: "你好猫咪", code: "Q", focus: "B").isEmpty)
+        XCTAssertTrue(tracker.observe(context: "你好猫", code: "Q", focus: "B").isEmpty)
+        XCTAssertTrue(tracker.observe(context: "你好", code: "", focus: "B").isEmpty)
+        _ = tracker.observe(context: "你好", code: "Q", focus: "B")
+        tracker.clear()
+        XCTAssertTrue(tracker.observe(context: "你好猫", code: "", focus: "B").isEmpty)
+        _ = tracker.observe(context: "你", code: "Q", focus: "A")
+        XCTAssertTrue(tracker.observe(context: "你好很长的一段粘贴文本", code: "", focus: "A").isEmpty)
+        let old = String(repeating: "你", count: 79) + "好"
+        _ = tracker.observe(context: old, code: "Q", focus: "C")
+        XCTAssertEqual(tracker.observe(context: String(old.dropFirst()) + "猫", code: "", focus: "C").map { $0.character }, ["猫"])
+    }
     private static let root = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()
@@ -103,6 +175,140 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(hold.handle(isDown: false)); XCTAssertFalse(hold.visible)
         XCTAssertFalse(hold.handle(isDown: false))
         XCTAssertEqual(code.code, "R")
+    }
+
+    func testDeleteRetainsRemainingCodeAcrossStaleAXSnapshots() {
+        for base in ["", "直", "已经上屏的中文"] {
+            var state = PendingCode()
+            _ = state.reconcile(context: base)
+            state.consume(.letter("Y")); _ = state.reconcile(context: base + "y")
+            state.consume(.letter("T")); _ = state.reconcile(context: base + "yt")
+            XCTAssertEqual(state.code, "YT")
+            state.consume(.backspace)
+            XCTAssertEqual(state.code, "Y")
+            for _ in 0..<3 {
+                XCTAssertEqual(state.reconcile(context: base + "yt"), base)
+                XCTAssertEqual(state.code, "Y")
+            }
+            XCTAssertEqual(state.reconcile(context: base + "y"), base)
+            XCTAssertEqual(state.code, "Y")
+            XCTAssertEqual(state.reconcile(context: base), base)
+            XCTAssertEqual(state.code, "Y")
+            XCTAssertTrue(Self.engine.predict(context: base, codePrefix: state.code).allSatisfy { $0.info.code.hasPrefix("Y") })
+        }
+    }
+
+    func testRepeatedDeleteAndRetypeWhileAXCatchesUp() {
+        var state = PendingCode()
+        _ = state.reconcile(context: "直")
+        state.consume(.letter("Y")); state.consume(.letter("T"))
+        XCTAssertEqual(state.reconcile(context: "直y"), "直")
+        XCTAssertEqual(state.code, "YT")
+        XCTAssertEqual(state.reconcile(context: "直yt"), "直")
+        state.consume(.backspace); state.consume(.backspace)
+        XCTAssertEqual(state.reconcile(context: "直yt"), "直")
+        XCTAssertEqual(state.code, "")
+        XCTAssertEqual(state.reconcile(context: "直y"), "直")
+        XCTAssertEqual(state.reconcile(context: "直"), "直")
+        state.consume(.letter("Y")); state.consume(.letter("T"))
+        _ = state.reconcile(context: "直yt")
+        state.consume(.backspace); state.consume(.letter("R"))
+        XCTAssertEqual(state.reconcile(context: "直yt"), "直")
+        XCTAssertEqual(state.code, "YR")
+        XCTAssertEqual(state.reconcile(context: "直y"), "直")
+        XCTAssertEqual(state.code, "YR")
+        XCTAssertEqual(state.reconcile(context: "直yr"), "直")
+        XCTAssertEqual(state.code, "YR")
+    }
+
+    func testDeleteWithoutVisibleLatinPreeditAndActualCommit() {
+        var state = PendingCode()
+        _ = state.reconcile(context: "")
+        state.consume(.letter("Y")); state.consume(.letter("T"))
+        _ = state.reconcile(context: "")
+        state.consume(.backspace)
+        XCTAssertEqual(state.reconcile(context: ""), "")
+        XCTAssertEqual(state.code, "Y")
+        XCTAssertEqual(state.reconcile(context: "言"), "言")
+        XCTAssertEqual(state.code, "")
+        state.consume(.letter("Y")); _ = state.reconcile(context: "言y")
+        state.consume(.reset)
+        XCTAssertEqual(state.reconcile(context: "言"), "言")
+        XCTAssertEqual(state.code, "")
+        state.clear()
+        XCTAssertEqual(state.reconcile(context: "其他输入框yt"), "其他输入框yt")
+        XCTAssertEqual(state.code, "")
+    }
+
+    func testInsertInMiddleOfPreeditWithLeftAndRightArrows() {
+        for base in ["", "直"] {
+            var state = PendingCode()
+            _ = state.reconcile(context: base)
+            state.consume(.letter("Y")); state.consume(.letter("T"))
+            _ = state.reconcile(context: base + "yt")
+            state.consume(.moveLeft)
+            XCTAssertEqual(state.code, "YT"); XCTAssertEqual(state.caret, 1)
+            XCTAssertEqual(state.reconcile(context: base + "yt"), base)
+            XCTAssertEqual(state.reconcile(context: base + "y"), base)
+            state.consume(.letter("R"))
+            XCTAssertEqual(state.code, "YRT"); XCTAssertEqual(state.caret, 2)
+            for stale in ["yt", "y", "yr", "yrt"] {
+                XCTAssertEqual(state.reconcile(context: base + stale), base)
+                XCTAssertEqual(state.code, "YRT")
+            }
+            state.consume(.moveRight)
+            XCTAssertEqual(state.caret, 3)
+            state.consume(.backspace)
+            XCTAssertEqual(state.code, "YR"); XCTAssertEqual(state.caret, 2)
+            XCTAssertEqual(state.reconcile(context: base + "yrt"), base)
+            XCTAssertEqual(state.reconcile(context: base + "yr"), base)
+            XCTAssertEqual(state.code, "YR")
+        }
+    }
+
+    func testDeleteAtPreeditCaretAndArrowBoundaries() {
+        var state = PendingCode()
+        _ = state.reconcile(context: "直")
+        state.consume(.letter("Y")); state.consume(.letter("T"))
+        _ = state.reconcile(context: "直yt")
+        state.consume(.moveLeft); state.consume(.backspace)
+        XCTAssertEqual(state.code, "T"); XCTAssertEqual(state.caret, 0)
+        for stale in ["yt", "y", ""] {
+            XCTAssertEqual(state.reconcile(context: "直" + stale), "直")
+            XCTAssertEqual(state.code, "T")
+        }
+        state.consume(.backspace); state.consume(.moveLeft)
+        XCTAssertEqual(state.code, "T"); XCTAssertEqual(state.caret, 0)
+        state.consume(.letter("Y")); XCTAssertEqual(state.code, "YT")
+        state.consume(.deleteForward)
+        XCTAssertEqual(state.code, "Y"); XCTAssertEqual(state.caret, 1)
+        state.consume(.moveRight); state.consume(.moveRight)
+        XCTAssertEqual(state.code, "Y"); XCTAssertEqual(state.caret, 1)
+        state.consume(.reset)
+        XCTAssertEqual(state.code, ""); XCTAssertEqual(state.caret, 0)
+        state.consume(.moveLeft); state.consume(.moveRight)
+        XCTAssertEqual(state.reconcile(context: "其他光标位置"), "其他光标位置")
+        XCTAssertEqual(state.code, ""); XCTAssertEqual(state.caret, 0)
+    }
+
+    func testPreeditEditsAcrossEightyUnitContextWindow() {
+        let base = String(repeating: "中文", count: 40)
+        func window(_ suffix: String) -> String { String((base + suffix).suffix(80)) }
+        var state = PendingCode()
+        _ = state.reconcile(context: window(""))
+        state.consume(.letter("Y")); _ = state.reconcile(context: window("y"))
+        state.consume(.letter("T")); _ = state.reconcile(context: window("yt"))
+        state.consume(.backspace)
+        _ = state.reconcile(context: window("yt"))
+        _ = state.reconcile(context: window("y"))
+        XCTAssertEqual(state.code, "Y")
+        state.consume(.letter("T")); _ = state.reconcile(context: window("yt"))
+        state.consume(.moveLeft); _ = state.reconcile(context: window("y"))
+        state.consume(.letter("R")); _ = state.reconcile(context: window("yr"))
+        _ = state.reconcile(context: window("yrt"))
+        XCTAssertEqual(state.code, "YRT"); XCTAssertEqual(state.caret, 2)
+        _ = state.reconcile(context: String((base + "话").suffix(80)))
+        XCTAssertEqual(state.code, "")
     }
 
     func testInvalidPrefixAndNoMatch() {

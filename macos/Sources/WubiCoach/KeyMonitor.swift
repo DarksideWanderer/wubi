@@ -113,6 +113,9 @@ final class KeyMonitor {
         if !flags.isEmpty { onKey?(.reset, pid); return }
         if let letter = Self.letters[key], letter != "Z" { onKey?(.letter(letter), pid) }
         else if key == 51 { onKey?(.backspace, pid) }
+        else if key == 117 { onKey?(.deleteForward, pid) }
+        else if key == 123 { onKey?(.moveLeft, pid) }
+        else if key == 124 { onKey?(.moveRight, pid) }
         else { onKey?(.reset, pid) }
     }
 

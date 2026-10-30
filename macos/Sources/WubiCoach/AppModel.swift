@@ -8,6 +8,12 @@ final class AppModel: ObservableObject {
     let engine: LearningEngine
     let dataDirectory: URL
     let rootFontName: String
+    private let predictor: PersonalizedPredictor
+    private var learning = CommittedInputTracker()
+    private var singleLookup = false
+    @Published private(set) var preferredCandidates: [WubiCandidate] = []
+    @Published private(set) var regularCandidates: [WubiCandidate] = []
+    @Published private(set) var preferenceNotice = ""
     @Published private(set) var context = ""
     @Published private(set) var prefix = ""
     @Published private(set) var status = "等待其他应用的输入框"
@@ -42,9 +48,12 @@ final class AppModel: ObservableObject {
     private var focusID = ""
     private var lastSample = Date.distantPast
 
-    init(dataDirectory: URL) throws {
+    init(dataDirectory: URL, preferenceURL: URL? = nil) throws {
         self.dataDirectory = dataDirectory
         engine = try LearningEngine(dataDirectory: dataDirectory)
+        let database = preferenceURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("org.wubicoach.desktop/preferences.sqlite3")
+        predictor = PersonalizedPredictor(engine: engine, databaseURL: database)
         let fontURL = dataDirectory.appendingPathComponent("roots.ttf") as CFURL
         CTFontManagerRegisterFontsForURL(fontURL, .process, nil)
         if let descriptors = CTFontManagerCreateFontDescriptorsFromURL(fontURL) as? [CTFontDescriptor],
@@ -95,7 +104,9 @@ final class AppModel: ObservableObject {
             guard let info = engine.lookup(character: context.trimmingCharacters(in: .whitespacesAndNewlines)) else {
                 status = "请输入一个已收录的汉字"; return false
             }
-            self.prefix = ""; candidates = [WubiCandidate(info: info, reason: "单字查询")]; selected = candidates.first
+            singleLookup = true
+            self.prefix = ""; preferredCandidates = [WubiCandidate(info: info, reason: "单字查询")]
+            regularCandidates = []; candidates = preferredCandidates; selected = candidates.first
         } else { updateCandidates() }
         status = paused ? "手动查询 · 自动读取已暂停" : "手动查询 · 返回其他应用后自动继续读取"
         return true
@@ -147,7 +158,7 @@ final class AppModel: ObservableObject {
               front.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
         let pid = front.processIdentifier
         if allowedPID != 0 && allowedPID != pid { clearCapture(); prefix = ""; context = ""; updateCandidates() }
-        if Date().timeIntervalSince(lastSample) > 1 { allowedPID = 0; keyQueue.removeAll(); pending.clear() }
+        if Date().timeIntervalSince(lastSample) > 1 { allowedPID = 0; keyQueue.removeAll(); pending.clear(); learning.clear() }
         guard !busy else { return }
         busy = true
         let revision = generation
@@ -175,6 +186,9 @@ final class AppModel: ObservableObject {
         for key in keyQueue { pending.consume(key) }; keyQueue.removeAll()
         let text = pending.reconcile(context: snapshot.text)
         let nextPrefix = pending.code
+        for observation in learning.observe(context: text, code: nextPrefix, focus: snapshot.focusID) {
+            predictor.record(context: observation.context, character: observation.character)
+        }
         status = source + " · " + snapshot.status + (nextPrefix.isEmpty ? "" : " · 按键推测")
         if refreshAfterPreview || context != text || prefix != nextPrefix {
             refreshAfterPreview = false
@@ -188,10 +202,21 @@ final class AppModel: ObservableObject {
         if !context.isEmpty || !prefix.isEmpty { context = ""; prefix = ""; updateCandidates() }
     }
 
-    private func clearCapture() { pending.clear(); keyQueue.removeAll(); allowedPID = 0; focusID = ""; lastSample = .distantPast }
+    private func clearCapture() { learning.clear(); pending.clear(); keyQueue.removeAll(); allowedPID = 0; focusID = ""; lastSample = .distantPast }
+
+    func select(_ candidate: WubiCandidate) {
+        if !singleLookup {
+            predictor.record(context: context, character: candidate.info.character, explicit: true)
+            updateCandidates()
+        }
+        selected = candidate
+    }
 
     private func updateCandidates() {
-        candidates = engine.predict(context: context, codePrefix: codeEnabled ? prefix : "")
+        singleLookup = false
+        let columns = predictor.predict(context: context, codePrefix: codeEnabled ? prefix : "")
+        preferredCandidates = columns.preferred; regularCandidates = columns.regular; candidates = columns.all
+        preferenceNotice = predictor.notice
         selected = candidates.first
     }
 }
