@@ -24,6 +24,11 @@ public struct WubiCandidate: Identifiable, Equatable {
     public var id: String { info.id }
     public let info: WubiCharacter
     public let reason: String
+
+    public init(info: WubiCharacter, reason: String) {
+        self.info = info
+        self.reason = reason
+    }
 }
 
 /// Uses the same TSV/YAML files and scoring rules as the Windows implementation.
